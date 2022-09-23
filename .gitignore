@@ -127,3 +127,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# ignore generated sample schemas as they are intended to showcase save & load functions
+samples/**/rs_*.json
