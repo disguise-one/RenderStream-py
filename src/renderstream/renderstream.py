@@ -18,8 +18,22 @@ pID3D12Device = ctypes.c_void_p
 pID3D12CommandQueue = ctypes.c_void_p
 pID3D12Resource = ctypes.c_void_p
 
+class VkDevice_T(ctypes.Structure):
+    pass
+VkDevice = ctypes.POINTER(VkDevice_T)
+
+class VkDeviceMemory_T(ctypes.Structure):
+    pass
+VkDeviceMemory = ctypes.POINTER(VkDeviceMemory_T)
+
+VkDeviceSize = ctypes.c_uint64
+
+class VkSemaphore_T(ctypes.Structure):
+    pass
+VkSemaphore = ctypes.POINTER(VkSemaphore_T)
+
 VERSION_MAJOR = 1
-VERSION_MINOR = 29
+VERSION_MINOR = 30
 
 
 class RS_ERROR(Enumeration):
@@ -76,7 +90,8 @@ class SenderFrameType(Enumeration):
     DX11_TEXTURE = 1
     DX12_TEXTURE = 2
     OPENGL_TEXTURE = 3
-    UNKNOWN = 4
+    VULKAN_TEXTURE = 4
+    UNKNOWN = 5
 
 
 class FrameDataFlags(Enumeration):
@@ -87,6 +102,7 @@ class FrameDataFlags(Enumeration):
 class RemoteParameterFlags(Enumeration):
     NO_FLAGS = 0
     NO_SEQUENCE = 1
+    READ_ONLY = 2
 
 
 class NumericalDefaults(AnnotatedStructure):
@@ -181,10 +197,18 @@ class Channels(AnnotatedStructure):
 
 class Schema(AnnotatedStructure):
     _pack_ = 4
+    engineName: ctypes.c_char_p
+    engineVersion: ctypes.c_char_p
+    info: ctypes.c_char_p
     channels: Channels
     scenes: Scenes
 
-    def __init__(self, channels: list[str], scenes: list[RemoteParameters]):
+    def __init__(self, channels: list[str], scenes: list[RemoteParameters],
+                 engineName: str = "", engineVersion: str = "", info: str = ""):
+        self.engineName = bytes(engineName, encoding='utf-8')
+        self.engineVersion = bytes(engineVersion, encoding='utf-8')
+        self.info = bytes(info, encoding='utf-8')
+
         self.channels.nChannels = len(channels)
         self.channels.channels = (ctypes.c_char_p * len(channels))(*(bytes(chan, encoding='utf-8') for chan in channels))
 
@@ -282,6 +306,49 @@ class CameraResponseData(AnnotatedStructure):
     camera: CameraData
 
 
+class FrameResponseData(AnnotatedStructure):
+    _pack_ = 16
+    cameraData: ctypes.POINTER(CameraResponseData)
+    schemaHash: ctypes.c_uint64
+    parameterDataSize: ctypes.c_uint32
+    parameterData: ctypes.c_void_p
+    textDataCount: ctypes.c_uint32
+    textData: ctypes.POINTER(ctypes.c_char_p)
+
+    def __init__(self, cameraData: CameraResponseData, scene: RemoteParameters, outputParams: dict[str, float | str]):
+        self.cameraData = ctypes.pointer(cameraData)
+        self.schemaHash = scene.hash
+
+        floats: list[float] = []
+        texts: list[str] = []
+
+        # Build the flattened list in the same order as the parameters were published
+        for iParam in range(scene.nParameters):
+            param: RemoteParameter = scene.parameters[iParam]
+            if not param.flags & RemoteParameterFlags.READ_ONLY.value:
+                continue
+
+            key = str(param.key, encoding='utf-8')
+            value = outputParams[key] # if this isn't present, the schema isn't matched with the outputParams somehow
+            if param.type == RemoteParameterType.NUMBER:
+                if not isinstance(value, float):
+                    raise ValueError(f"Value for {key} should be float")
+                floats.append(value)
+            elif param.type == RemoteParameterType.TEXT:
+                if not isinstance(value, str):
+                    raise ValueError(f"Value for {key} should be str")
+                texts.append(value)
+            else:
+                raise ValueError(f"Unexpected {value!r} in output params")
+
+        fParams = (ctypes.c_float * len(floats))(*floats)
+        self.parameterData = ctypes.cast(fParams, ctypes.c_void_p)
+        self.parameterDataSize = ctypes.sizeof(fParams)
+
+        self.textDataCount = len(texts)
+        self.textData = (ctypes.c_char_p * len(texts))(*texts)
+
+        print(fParams, self.parameterData, self.parameterDataSize, self.textDataCount, self.textData)
 class HostMemoryData(AnnotatedStructure):
     _pack_ = 4
     data: ctypes.POINTER(ctypes.c_uint8)
@@ -303,12 +370,31 @@ class OpenGlData(AnnotatedStructure):
     texture: ctypes.c_uint
 
 
+class VulkanDataStructure(AnnotatedStructure):
+    _pack_ = 4
+    memory: VkDeviceMemory
+    size: VkDeviceSize
+    format: RSPixelFormat
+    width: ctypes.c_uint32
+    height: ctypes.c_uint32
+    waitSemaphore: VkSemaphore
+    waitSemaphoreValue: ctypes.c_uint64
+    signalSemaphore: VkSemaphore
+    signalSemaphoreValue: ctypes.c_uint64
+
+
+class VulkanData(AnnotatedStructure):
+    _pack_ = 4
+    image: ctypes.POINTER(VulkanDataStructure)
+
+
 class SenderFrameTypeData(AnnotatedUnion):
     _pack_ = 4
     cpu: HostMemoryData
     dx11: Dx11Data
     dx12: Dx12Data
     gl: OpenGlData
+    vk: VulkanData
 
 
 class ProfilingEntry(AnnotatedStructure):
@@ -371,11 +457,12 @@ def loadRenderStreamFromRegistry():
     renderStreamDll.rs_initialiseGpGpuWithDX11Device.restype = checkRsErrorOK
     renderStreamDll.rs_initialiseGpGpuWithDX11Resource.argtypes = [pID3D11Resource]
     renderStreamDll.rs_initialiseGpGpuWithDX11Resource.restype = checkRsErrorOK
-
     renderStreamDll.rs_initialiseGpGpuWithDX12DeviceAndQueue.argtypes = [pID3D12Device, pID3D12CommandQueue]
     renderStreamDll.rs_initialiseGpGpuWithDX12DeviceAndQueue.restype = checkRsErrorOK
     renderStreamDll.rs_initialiseGpGpuWithOpenGlContexts.argtypes = [ctypes.c_void_p, ctypes.c_void_p]  # [HGLRC, HDC]
     renderStreamDll.rs_initialiseGpGpuWithOpenGlContexts.restype = checkRsErrorOK
+    renderStreamDll.rs_initialiseGpGpuWithVulkanDevice.argtypes = [VkDevice]
+    renderStreamDll.rs_initialiseGpGpuWithVulkanDevice.restype = checkRsErrorOK
 
     renderStreamDll.rs_shutdown.argtypes = []
     renderStreamDll.rs_shutdown.restype = checkRsErrorOK
@@ -422,8 +509,11 @@ def loadRenderStreamFromRegistry():
     renderStreamDll.rs_getFrameCamera.restype = checkRsErrorOK
 
     renderStreamDll.rs_sendFrame.argtypes = [StreamHandle, SenderFrameType, SenderFrameTypeData,
-                                            ctypes.POINTER(CameraResponseData)]
+                                            ctypes.POINTER(FrameResponseData)]
     renderStreamDll.rs_sendFrame.restype = checkRsErrorOK
+
+    renderStreamDll.rs_releaseImage.argtypes = [SenderFrameType, SenderFrameTypeData]
+    renderStreamDll.rs_releaseImage.restype = checkRsErrorOK
 
     renderStreamDll.rs_logToD3.argtypes = [ctypes.c_char_p]
     renderStreamDll.rs_logToD3.restype = checkRsErrorOK
@@ -502,6 +592,9 @@ class RenderStream:
     def initialiseGpGpuWithOpenGlContexts(self, glrc: ctypes.c_void_p, dc: ctypes.c_void_p):
         self.dll.rs_initialiseGpGpuWithOpenGlContexts(glrc, dc)
 
+    def initialiseGpGpuWithVulkanDevice(self, device: VkDevice):
+        self.dll.rs_initialiseGpGpuWithVulkanDevice(device)
+
     def useDX12SharedHeapFlag(self):
         """When working with DX12, due to the nature of some interop libraries, we either require or don't require
         the shared heap flag to be set on the resources used with RenderStream - this will tell you which."""
@@ -573,7 +666,12 @@ class RenderStream:
         nImages = 0
         nTexts = 0
         for i in range(scene.nParameters):
-            type = scene.parameters[i].type
+            param: RemoteParameter = scene.parameters[i]
+            type = param.type
+
+            if param.flags & RemoteParameterFlags.READ_ONLY.value:
+                continue # don't count output params
+
             if type == RemoteParameterType.NUMBER:
                 nFloats += 1
             elif type == RemoteParameterType.IMAGE:
@@ -598,6 +696,10 @@ class RenderStream:
         iText = 0
         for i in range(scene.nParameters):
             param: RemoteParameter = scene.parameters[i]
+
+            if param.flags & RemoteParameterFlags.READ_ONLY.value:
+                continue # don't count output params
+
             key = str(param.key, encoding='utf-8')
             if param.type == RemoteParameterType.NUMBER:
                 values[key] = floats[iFloat]
@@ -633,9 +735,13 @@ class RenderStream:
         return cam
 
     def sendFrame(self, stream: StreamHandle, frameType: SenderFrameType, frameData: SenderFrameTypeData,
-                  cameraResponse: CameraResponseData):
+                  response: FrameResponseData):
         "publish a frame buffer which was generated from the associated tracking and timing information."
-        self.dll.rs_sendFrame(stream, frameType, frameData, ctypes.pointer(cameraResponse))
+        self.dll.rs_sendFrame(stream, frameType, frameData, ctypes.pointer(response))
+
+    def releaseImage(self, frameType: SenderFrameType, frameData: SenderFrameTypeData):
+        "release any references to image (e.g. before deletion)"
+        self.dll.rs_releaseImage(frameType, frameData)
 
     def logToD3(self, message):
         """Log text back to the controlling d3 instance, this will be presented as a single line.

@@ -27,6 +27,8 @@ def getSchema(rs):
                     RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001)),
                 RS.RemoteParameter("stable_key_colour_a", "Colour A", "Strobe properties",
                     RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001)),
+                RS.RemoteParameter("stable_key_strobe_ro", "Strobe", "Strobe properties",
+                    RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001), flags=RS.RemoteParameterFlags.READ_ONLY),
             ]),
 
             RS.RemoteParameters("Radar", [
@@ -37,7 +39,10 @@ def getSchema(rs):
                 RS.RemoteParameter("stable_key_direction", "Direction", "Radar properties",
                     RS.NumericalDefaults(1.0, 0.0, 1.0, 1), ["Left", "Right"]),
             ]),
-        ])
+        ],
+        engineName="Schema sample",
+        engineVersion="9000+",
+        info="sample application to demonstrate RenderStream-py")
         rs.saveSchema(__file__, schema)
         rs.setSchema(schema)
     return schema
@@ -106,6 +111,7 @@ def main():
                 strobe = abs(1 - ((frameData.tTracked * speed) % 2))
                 colour = np.array((b * strobe * 255, g * strobe * 255, r * strobe * 255, a * strobe * 255), dtype=np.uint8)
                 frameBuffer = np.tile(colour, stream.width * stream.height)
+                outputParams = {'stable_key_strobe_ro': strobe}
             else:
                 lengthPx = int(paramValues['stable_key_length'] * totalCanvasWidthPx)
                 direction = paramValues['stable_key_direction']
@@ -122,12 +128,15 @@ def main():
                         lineBrightness[streamX] = fade
                 lineBytes = lineBrightness.repeat(4)
                 frameBuffer = np.tile(lineBytes, stream.height)
+                outputParams = {}
 
             pixelsData = RS.SenderFrameTypeData()
             pixelsData.cpu.data = frameBuffer.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
             pixelsData.cpu.stride = stream.width * 4
 
-            rs.sendFrame(stream.handle, RS.SenderFrameType.HOST_MEMORY, pixelsData, streamCam)
+            response = RS.FrameResponseData(streamCam, scene, outputParams)
+
+            rs.sendFrame(stream.handle, RS.SenderFrameType.HOST_MEMORY, pixelsData, response)
 
 if __name__ == '__main__':
     main()
