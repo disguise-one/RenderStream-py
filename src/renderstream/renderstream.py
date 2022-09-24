@@ -348,7 +348,6 @@ class FrameResponseData(AnnotatedStructure):
         self.textDataCount = len(texts)
         self.textData = (ctypes.c_char_p * len(texts))(*texts)
 
-        print(fParams, self.parameterData, self.parameterDataSize, self.textDataCount, self.textData)
 class HostMemoryData(AnnotatedStructure):
     _pack_ = 4
     data: ctypes.POINTER(ctypes.c_uint8)
