@@ -1,12 +1,14 @@
-if __name__ == '__main__':
-    # use the local version of renderstream 
+if __name__ == "__main__":
+    # use the local version of renderstream
     import sys
     import os.path as p
-    sys.path.insert(0, p.join(p.dirname(p.dirname(__file__)), 'src'))
+
+    sys.path.insert(0, p.join(p.dirname(p.dirname(__file__)), "src"))
 
 import renderstream as RS
 import numpy as np
 import ctypes
+
 
 def getSchema(rs):
     schema = rs.loadSchema(__file__)
@@ -15,40 +17,90 @@ def getSchema(rs):
         # We only need one of either the loadSchema or the set&saveSchema functions to be called in a given
         # run of the application.
         print("Creating new schema")
-        schema = RS.Schema(['chanchan'], [
-            RS.RemoteParameters("Strobe", [
-                RS.RemoteParameter("stable_shared_key_speed", "Strobe speed", "Shared properties",
-                    RS.NumericalDefaults(1.0, 0.0, 4.0, 0.01), flags=RS.RemoteParameterFlags.NO_SEQUENCE),
-                RS.RemoteParameter("stable_key_colour_r", "Colour R", "Strobe properties",
-                    RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001)),
-                RS.RemoteParameter("stable_key_colour_g", "Colour G", "Strobe properties",
-                    RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001)),
-                RS.RemoteParameter("stable_key_colour_b", "Colour B", "Strobe properties",
-                    RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001)),
-                RS.RemoteParameter("stable_key_colour_a", "Colour A", "Strobe properties",
-                    RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001)),
-                RS.RemoteParameter("stable_key_strobe_ro", "Strobe", "Strobe properties",
-                    RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001), flags=RS.RemoteParameterFlags.READ_ONLY),
-            ]),
-
-            RS.RemoteParameters("Radar", [
-                RS.RemoteParameter("stable_shared_key_speed", "Radar speed", "Shared properties",
-                    RS.NumericalDefaults(1.0, 0.0, 4.0, 0.01), flags=RS.RemoteParameterFlags.NO_SEQUENCE),
-                RS.RemoteParameter("stable_key_length", "Length", "Radar properties",
-                    RS.NumericalDefaults(0.25, 0.0, 1.0, 0.01)),
-                RS.RemoteParameter("stable_key_direction", "Direction", "Radar properties",
-                    RS.NumericalDefaults(1.0, 0.0, 1.0, 1), ["Left", "Right"]),
-            ]),
-        ],
-        engineName="Schema sample",
-        engineVersion="9000+",
-        info="sample application to demonstrate RenderStream-py")
+        schema = RS.Schema(
+            ["chanchan"],
+            [
+                RS.RemoteParameters(
+                    "Strobe",
+                    [
+                        RS.RemoteParameter(
+                            "stable_shared_key_speed",
+                            "Strobe speed",
+                            "Shared properties",
+                            RS.NumericalDefaults(1.0, 0.0, 4.0, 0.01),
+                            flags=RS.RemoteParameterFlags.NO_SEQUENCE,
+                        ),
+                        RS.RemoteParameter(
+                            "stable_key_colour_r",
+                            "Colour R",
+                            "Strobe properties",
+                            RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001),
+                        ),
+                        RS.RemoteParameter(
+                            "stable_key_colour_g",
+                            "Colour G",
+                            "Strobe properties",
+                            RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001),
+                        ),
+                        RS.RemoteParameter(
+                            "stable_key_colour_b",
+                            "Colour B",
+                            "Strobe properties",
+                            RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001),
+                        ),
+                        RS.RemoteParameter(
+                            "stable_key_colour_a",
+                            "Colour A",
+                            "Strobe properties",
+                            RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001),
+                        ),
+                        RS.RemoteParameter(
+                            "stable_key_strobe_ro",
+                            "Strobe",
+                            "Strobe properties",
+                            RS.NumericalDefaults(1.0, 0.0, 1.0, 0.001),
+                            flags=RS.RemoteParameterFlags.READ_ONLY,
+                        ),
+                    ],
+                ),
+                RS.RemoteParameters(
+                    "Radar",
+                    [
+                        RS.RemoteParameter(
+                            "stable_shared_key_speed",
+                            "Radar speed",
+                            "Shared properties",
+                            RS.NumericalDefaults(1.0, 0.0, 4.0, 0.01),
+                            flags=RS.RemoteParameterFlags.NO_SEQUENCE,
+                        ),
+                        RS.RemoteParameter(
+                            "stable_key_length",
+                            "Length",
+                            "Radar properties",
+                            RS.NumericalDefaults(0.25, 0.0, 1.0, 0.01),
+                        ),
+                        RS.RemoteParameter(
+                            "stable_key_direction",
+                            "Direction",
+                            "Radar properties",
+                            RS.NumericalDefaults(1.0, 0.0, 1.0, 1),
+                            ["Left", "Right"],
+                        ),
+                    ],
+                ),
+            ],
+            engineName="Schema sample",
+            engineVersion="9000+",
+            info="sample application to demonstrate RenderStream-py",
+        )
         rs.saveSchema(__file__, schema)
         rs.setSchema(schema)
     return schema
 
+
 def rs_log(message):
     print(message)
+
 
 def main():
     rs = RS.RenderStream()
@@ -62,7 +114,6 @@ def main():
     streams = None
 
     print("Starting main loop")
-    i = 0
     while True:
         try:
             frameData = rs.awaitFrameData(5000)
@@ -102,26 +153,33 @@ def main():
                     raise
 
             totalCanvasWidthPx = int(stream.width / (stream.clipping.right - stream.clipping.left))
-            totalCanvasHeightPx = int(stream.height / (stream.clipping.bottom - stream.clipping.top))
+            #  totalCanvasHeightPx = int(stream.height / (stream.clipping.bottom - stream.clipping.top))
             streamOffsetXPx = int(stream.clipping.left * totalCanvasWidthPx)
 
-            speed = paramValues['stable_shared_key_speed']
+            speed = paramValues["stable_shared_key_speed"]
             if frameData.scene == 0:
-                r, g, b, a = paramValues['stable_key_colour_r'], paramValues['stable_key_colour_g'], paramValues['stable_key_colour_b'], paramValues['stable_key_colour_a']
+                r, g, b, a = (
+                    paramValues["stable_key_colour_r"],
+                    paramValues["stable_key_colour_g"],
+                    paramValues["stable_key_colour_b"],
+                    paramValues["stable_key_colour_a"],
+                )
                 strobe = abs(1 - ((frameData.tTracked * speed) % 2))
-                colour = np.array((b * strobe * 255, g * strobe * 255, r * strobe * 255, a * strobe * 255), dtype=np.uint8)
+                colour = np.array(
+                    (b * strobe * 255, g * strobe * 255, r * strobe * 255, a * strobe * 255), dtype=np.uint8
+                )
                 frameBuffer = np.tile(colour, stream.width * stream.height)
-                outputParams = {'stable_key_strobe_ro': strobe}
+                outputParams = {"stable_key_strobe_ro": strobe}
             else:
-                lengthPx = int(paramValues['stable_key_length'] * totalCanvasWidthPx)
-                direction = paramValues['stable_key_direction']
+                lengthPx = int(paramValues["stable_key_length"] * totalCanvasWidthPx)
+                direction = paramValues["stable_key_direction"]
 
                 xStartRadar = int(frameData.tTracked * speed * totalCanvasWidthPx)
                 xStartRadar = xStartRadar if direction else -xStartRadar
 
                 lineBrightness = np.zeros(stream.width, dtype=np.uint8)
                 for offset in range(lengthPx):
-                    fade = int(255 * (lengthPx-offset)/lengthPx)
+                    fade = int(255 * (lengthPx - offset) / lengthPx)
                     x = int(xStartRadar - offset if direction else xStartRadar + offset) % totalCanvasWidthPx
                     streamX = x - streamOffsetXPx
                     if streamX >= 0 and streamX < stream.width:
@@ -138,5 +196,6 @@ def main():
 
             rs.sendFrame(stream.handle, RS.SenderFrameType.HOST_MEMORY, pixelsData, response)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
