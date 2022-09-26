@@ -33,7 +33,7 @@ class VkSemaphore_T(ctypes.Structure):
 VkSemaphore = ctypes.POINTER(VkSemaphore_T)
 
 VERSION_MAJOR = 1
-VERSION_MINOR = 30
+VERSION_MINOR = 31
 
 
 class RS_ERROR(Enumeration):
@@ -352,6 +352,7 @@ class HostMemoryData(AnnotatedStructure):
     _pack_ = 4
     data: ctypes.POINTER(ctypes.c_uint8)
     stride: ctypes.c_uint32
+    format: RSPixelFormat
 
 
 class Dx11Data(AnnotatedStructure):
@@ -369,7 +370,7 @@ class OpenGlData(AnnotatedStructure):
     texture: ctypes.c_uint
 
 
-class VulkanDataStructure(AnnotatedStructure):
+class VulkanData(AnnotatedStructure):
     _pack_ = 4
     memory: VkDeviceMemory
     size: VkDeviceSize
@@ -382,11 +383,6 @@ class VulkanDataStructure(AnnotatedStructure):
     signalSemaphoreValue: ctypes.c_uint64
 
 
-class VulkanData(AnnotatedStructure):
-    _pack_ = 4
-    image: ctypes.POINTER(VulkanDataStructure)
-
-
 class SenderFrameTypeData(AnnotatedUnion):
     _pack_ = 4
     cpu: HostMemoryData
@@ -394,6 +390,31 @@ class SenderFrameTypeData(AnnotatedUnion):
     dx12: Dx12Data
     gl: OpenGlData
     vk: VulkanData
+
+
+class SenderFrame(AnnotatedStructure):
+    _pack_ = 4
+    type: SenderFrameType
+    data: SenderFrameTypeData
+
+    def __init__(self, data: HostMemoryData | Dx11Data | Dx12Data | OpenGlData | VulkanData):
+        if isinstance(data, HostMemoryData):
+            self.type = SenderFrameType.HOST_MEMORY
+            self.data.cpu = data
+        elif isinstance(data, Dx11Data):
+            self.type = SenderFrameType.DX11_TEXTURE
+            self.data.dx11 = data
+        elif isinstance(data, Dx12Data):
+            self.type = SenderFrameType.DX12_TEXTURE
+            self.data.dx12 = data
+        elif isinstance(data, OpenGlData):
+            self.type = SenderFrameType.OPENGL_TEXTURE
+            self.data.gl = data
+        elif isinstance(data, VulkanData):
+            self.type = SenderFrameType.VULKAN_TEXTURE
+            self.data.vk = data
+        else:
+            raise TypeError(f"Unexpected parameter of type '{type(data).__name__}'")
 
 
 class ProfilingEntry(AnnotatedStructure):
@@ -498,8 +519,8 @@ def loadRenderStreamFromRegistry():
     renderStreamDll.rs_getFrameImageData.argtypes = [ctypes.c_uint64, ctypes.POINTER(ImageFrameData), ctypes.c_uint64]
     renderStreamDll.rs_getFrameImageData.restype = checkRsErrorOK
 
-    renderStreamDll.rs_getFrameImage.argtypes = [ctypes.c_int64, SenderFrameType, SenderFrameTypeData]
-    renderStreamDll.rs_getFrameImage.restype = checkRsErrorOK
+    renderStreamDll.rs_getFrameImage2.argtypes = [ctypes.c_int64, ctypes.POINTER(SenderFrame)]
+    renderStreamDll.rs_getFrameImage2.restype = checkRsErrorOK
 
     renderStreamDll.rs_getFrameText.argtypes = [ctypes.c_uint64, ctypes.c_uint32, ctypes.POINTER(ctypes.c_char_p)]
     renderStreamDll.rs_getFrameText.restype = checkRsErrorOK
@@ -507,12 +528,11 @@ def loadRenderStreamFromRegistry():
     renderStreamDll.rs_getFrameCamera.argtypes = [StreamHandle, ctypes.POINTER(CameraData)]
     renderStreamDll.rs_getFrameCamera.restype = checkRsErrorOK
 
-    renderStreamDll.rs_sendFrame.argtypes = [StreamHandle, SenderFrameType, SenderFrameTypeData,
-                                            ctypes.POINTER(FrameResponseData)]
-    renderStreamDll.rs_sendFrame.restype = checkRsErrorOK
+    renderStreamDll.rs_sendFrame2.argtypes = [StreamHandle, ctypes.POINTER(SenderFrame), ctypes.POINTER(FrameResponseData)]
+    renderStreamDll.rs_sendFrame2.restype = checkRsErrorOK
 
-    renderStreamDll.rs_releaseImage.argtypes = [SenderFrameType, SenderFrameTypeData]
-    renderStreamDll.rs_releaseImage.restype = checkRsErrorOK
+    renderStreamDll.rs_releaseImage2.argtypes = [ctypes.POINTER(SenderFrame)]
+    renderStreamDll.rs_releaseImage2.restype = checkRsErrorOK
 
     renderStreamDll.rs_logToD3.argtypes = [ctypes.c_char_p]
     renderStreamDll.rs_logToD3.restype = checkRsErrorOK
@@ -722,9 +742,9 @@ class RenderStream:
 
         return values
 
-    def getFrameImage(self, imageId: ctypes.c_int64, frameType: SenderFrameType, frameData: SenderFrameTypeData):
+    def getFrameImage(self, imageId: ctypes.c_int64, frame: SenderFrame):
         "fills in (frameData) with the remote image."
-        self.dll.rs_getFrameImage(imageId, frameType, frameData)
+        self.dll.rs_getFrameImage2(imageId, ctypes.pointer(frame))
 
     def getFrameCamera(self, stream: StreamHandle) -> CameraData:
         "returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no " \
@@ -733,14 +753,13 @@ class RenderStream:
         self.dll.rs_getFrameCamera(stream, ctypes.pointer(cam))
         return cam
 
-    def sendFrame(self, stream: StreamHandle, frameType: SenderFrameType, frameData: SenderFrameTypeData,
-                  response: FrameResponseData):
+    def sendFrame(self, stream: StreamHandle, frame: SenderFrame, response: FrameResponseData):
         "publish a frame buffer which was generated from the associated tracking and timing information."
-        self.dll.rs_sendFrame(stream, frameType, frameData, ctypes.pointer(response))
+        self.dll.rs_sendFrame2(stream, ctypes.pointer(frame), ctypes.pointer(response))
 
-    def releaseImage(self, frameType: SenderFrameType, frameData: SenderFrameTypeData):
+    def releaseImage(self, frame: SenderFrame):
         "release any references to image (e.g. before deletion)"
-        self.dll.rs_releaseImage(frameType, frameData)
+        self.dll.rs_releaseImage2(ctypes.pointer(frame))
 
     def logToD3(self, message):
         """Log text back to the controlling d3 instance, this will be presented as a single line.
