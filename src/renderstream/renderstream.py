@@ -45,7 +45,7 @@ class RS_ERROR(Enumeration):
 class RemoteParameterType(Enumeration):
     NUMBER = 0
     IMAGE = 1
-    POSE = 2       # 4x4 TR matrix
+    POSE = 2  # 4x4 TR matrix
     TRANSFORM = 3  # 4x4 TRS matrix
     TEXT = 4
 
@@ -108,7 +108,7 @@ class TextDefaults(AnnotatedStructure):
     defaultValue: ctypes.c_char_p
 
     def __init__(self, default: str):
-        self.defaultValue = bytes(default, encoding='utf-8')
+        self.defaultValue = bytes(default, encoding="utf-8")
 
 
 class RemoteParameterTypeDefaults(AnnotatedUnion):
@@ -137,17 +137,25 @@ class RemoteParameter(AnnotatedStructure):
     dmxType: RemoteParameterDmxType
     flags: ctypes.c_uint32
 
-    def __init__(self, key: str, displayName: str, group: str, defaults: NumericalDefaults | TextDefaults,
-                 options: list[str] = [], dmxOffset: int = 0, dmxType: RemoteParameterDmxType = RemoteParameterDmxType.DEFAULT,
-                 flags: RemoteParameterFlags = RemoteParameterFlags.NO_FLAGS):
-        self.group = bytes(group, encoding='utf-8')
-        self.displayName = bytes(displayName, encoding='utf-8')
-        self.key = bytes(key, encoding='utf-8')
+    def __init__(
+        self,
+        key: str,
+        displayName: str,
+        group: str,
+        defaults: NumericalDefaults | TextDefaults,
+        options: list[str] = [],
+        dmxOffset: int = 0,
+        dmxType: RemoteParameterDmxType = RemoteParameterDmxType.DEFAULT,
+        flags: RemoteParameterFlags = RemoteParameterFlags.NO_FLAGS,
+    ):
+        self.group = bytes(group, encoding="utf-8")
+        self.displayName = bytes(displayName, encoding="utf-8")
+        self.key = bytes(key, encoding="utf-8")
         self.type = RemoteParameterType.NUMBER if isinstance(defaults, NumericalDefaults) else RemoteParameterType.TEXT
         self.defaults = RemoteParameterTypeDefaults(defaults)
 
         self.nOptions = len(options)
-        self.options = (ctypes.c_char_p * len(options))(*(bytes(option, encoding='utf-8') for option in options))
+        self.options = (ctypes.c_char_p * len(options))(*(bytes(option, encoding="utf-8") for option in options))
 
         self.dmxOffset = dmxOffset
         self.dmxType = dmxType
@@ -163,9 +171,10 @@ class RemoteParameters(AnnotatedStructure):
     hash: ctypes.c_uint64
 
     def __init__(self, name: str, parameters: list[RemoteParameter]):
-        self.name = bytes(name, encoding='utf-8')
+        self.name = bytes(name, encoding="utf-8")
         self.nParameters = len(parameters)
         self.parameters = (RemoteParameter * len(parameters))(*parameters)
+
 
 class Scenes(AnnotatedStructure):
     _pack_ = 4
@@ -186,10 +195,13 @@ class Schema(AnnotatedStructure):
 
     def __init__(self, channels: list[str], scenes: list[RemoteParameters]):
         self.channels.nChannels = len(channels)
-        self.channels.channels = (ctypes.c_char_p * len(channels))(*(bytes(chan, encoding='utf-8') for chan in channels))
+        self.channels.channels = (ctypes.c_char_p * len(channels))(
+            *(bytes(chan, encoding="utf-8") for chan in channels)
+        )
 
         self.scenes.nScenes = len(scenes)
         self.scenes.scenes = (RemoteParameters * len(scenes))(*scenes)
+
 
 pSchema = ctypes.POINTER(Schema)
 
@@ -203,8 +215,8 @@ class ImageFrameData(AnnotatedStructure):
 
 
 class ProjectionClipping(AnnotatedStructure):
-    "Normalised (0-1) clipping planes for the edges of the camera frustum, to be used to perform off-axis " \
-        "perspective projection, or to offset and scale 2D orthographic matrices."
+    """Normalised (0-1) clipping planes for the edges of the camera frustum, to be used to perform off-axis
+    perspective projection, or to offset and scale 2D orthographic matrices."""
     _pack_ = 4
     left: ctypes.c_float
     right: ctypes.c_float
@@ -229,7 +241,10 @@ class StreamDescriptions(AnnotatedStructure):
     _pack_ = 4
     nStreams: ctypes.c_uint32
     streams: ctypes.POINTER(StreamDescription)
+
+
 pStreamDescriptions = ctypes.POINTER(StreamDescriptions)
+
 
 class D3TrackingData(AnnotatedStructure):
     "Tracking data required by d3 but not used to render content"
@@ -327,9 +342,11 @@ def checkRsErrorOK(value):
         raise RenderStreamError(RS_ERROR(value))
     return RS_ERROR.SUCCESS
 
+
 def loadRenderStreamFromRegistry():
-    suiteKey = winreg.OpenKeyEx(winreg.HKEY_CURRENT_USER, "Software\\d3 Technologies\\d3 Production Suite",
-                                0, winreg.KEY_READ)
+    suiteKey = winreg.OpenKeyEx(
+        winreg.HKEY_CURRENT_USER, "Software\\d3 Technologies\\d3 Production Suite", 0, winreg.KEY_READ
+    )
 
     exePath, exePathType = winreg.QueryValueEx(suiteKey, "exe path")
     assert exePathType == winreg.REG_SZ
@@ -343,7 +360,7 @@ def loadRenderStreamFromRegistry():
 
     # TODO: When using Python > 3.8, we can use winmode=0x00000100 in the CDLL ctor, and no need to
     # modify the environment
-    os.environ['PATH'] = os.environ['PATH'] + os.pathsep + exeDir
+    os.environ["PATH"] = os.environ["PATH"] + os.pathsep + exeDir
     renderStreamDll = ctypes.CDLL(renderStreamDllPath)
 
     renderStreamDll.rs_registerLoggingFunc.argtypes = [logger_t]
@@ -421,8 +438,12 @@ def loadRenderStreamFromRegistry():
     renderStreamDll.rs_getFrameCamera.argtypes = [StreamHandle, ctypes.POINTER(CameraData)]
     renderStreamDll.rs_getFrameCamera.restype = checkRsErrorOK
 
-    renderStreamDll.rs_sendFrame.argtypes = [StreamHandle, SenderFrameType, SenderFrameTypeData,
-                                            ctypes.POINTER(CameraResponseData)]
+    renderStreamDll.rs_sendFrame.argtypes = [
+        StreamHandle,
+        SenderFrameType,
+        SenderFrameTypeData,
+        ctypes.POINTER(CameraResponseData),
+    ]
     renderStreamDll.rs_sendFrame.restype = checkRsErrorOK
 
     renderStreamDll.rs_logToD3.argtypes = [ctypes.c_char_p]
@@ -445,9 +466,9 @@ class RenderStream:
         # Python detects that and increases buffering to the point you don't see any output.
         # So we need to revert back to line buffering.
         # This is `TextIOWrapper` buffering, not the 'real' stream buffering.
-        if os.environ.get('rsWorkloadID', None):
-            sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
-            sys.stderr.reconfigure(line_buffering=True, encoding='utf-8')
+        if os.environ.get("rsWorkloadID", None):
+            sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
+            sys.stderr.reconfigure(line_buffering=True, encoding="utf-8")
 
         self.dll.rs_initialise(VERSION_MAJOR, VERSION_MINOR)
 
@@ -456,22 +477,22 @@ class RenderStream:
             self.dll.rs_shutdown()
         finally:
             # Bizarre requirement to unload explicitly.
-            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
             kernel32.FreeLibrary.argtypes = [ctypes.wintypes.HMODULE]
             kernel32.FreeLibrary(self.dll._handle)
 
             del self.dll
 
     def registerLoggingFunc(self, logger: Callable[[str], None]):
-        self._logger = logger_t(lambda bMsg: logger(str(bMsg, encoding='utf-8')))
+        self._logger = logger_t(lambda bMsg: logger(str(bMsg, encoding="utf-8")))
         self.dll.rs_registerLoggingFunc(self._logger)
 
     def registerErrorLoggingFunc(self, logger: Callable[[str], None]):
-        self._errorLogger = logger_t(lambda bMsg: logger(str(bMsg, encoding='utf-8')))
+        self._errorLogger = logger_t(lambda bMsg: logger(str(bMsg, encoding="utf-8")))
         self.dll.rs_registerErrorLoggingFunc(self._errorLogger)
 
     def registerVerboseLoggingFunc(self, logger: Callable[[str], None]):
-        self._verboseLogger = logger_t(lambda bMsg: logger(str(bMsg, encoding='utf-8')))
+        self._verboseLogger = logger_t(lambda bMsg: logger(str(bMsg, encoding="utf-8")))
         self.dll.rs_registerVerboseLoggingFunc(self._verboseLogger)
 
     def unregisterLoggingFunc(self):
@@ -511,11 +532,11 @@ class RenderStream:
 
     def saveSchema(self, assetPath: str, schema: Schema):
         "Save the schema. Choose assetPath to be the location the script is run from."
-        self.dll.rs_saveSchema(bytes(assetPath, encoding='utf-8'), ctypes.pointer(schema))
+        self.dll.rs_saveSchema(bytes(assetPath, encoding="utf-8"), ctypes.pointer(schema))
 
     def loadSchema(self, assetPath: str) -> Schema:
         "Load the schema. Choose assetPath to be the location the script is run from"
-        pathBytes = bytes(assetPath, encoding='utf-8')
+        pathBytes = bytes(assetPath, encoding="utf-8")
         nBytes = ctypes.c_uint32(0)
         try:
             self.dll.rs_loadSchema(pathBytes, pSchema(), ctypes.pointer(nBytes))
@@ -553,21 +574,23 @@ class RenderStream:
         In normal operation, this raises RenderStream exceptions on timeout and when streams change
         and these need to be handled appropriately."""
         frameData = FrameData()
-        self.dll.rs_awaitFrameData(timeoutMs, ctypes.pointer(frameData)) # throws timout etc errors. it's ok.
+        self.dll.rs_awaitFrameData(timeoutMs, ctypes.pointer(frameData))  # throws timout etc errors. it's ok.
         return frameData
 
     def setFollower(self, isFollower: bool):
-        "Used to mark this node as relying on alternative mechanisms to " \
-        "distribute FrameData. Users must provide correct CameraResponseData to sendFrame, and call " \
-        "rs_beginFollowerFrame at the start of the frame, where awaitFrame would normally be called."
+        """Used to mark this node as relying on alternative mechanisms to " "distribute FrameData. Users must provide
+        correct CameraResponseData to sendFrame, and call " "rs_beginFollowerFrame at the start of the frame, where
+        awaitFrame would normally be called."""
         self.dll.rs_setFollower(isFollower)
 
     def beginFollowerFrame(self, frameTime: float):
-        "Pass the engine-distributed tTracked value in, if you have " \
-        "called rs_setFollower(1) otherwise do not call this function."
+        """Pass the engine-distributed tTracked value in, if you have " "called rs_setFollower(1) otherwise do not
+        call this function."""
         self.dll.rs_beginFollowerFrame(frameTime)
 
-    def getFrameParameters(self, scene: RemoteParameters) -> dict[str, float | tuple[(float,)*16] | str | ImageFrameData]:
+    def getFrameParameters(
+        self, scene: RemoteParameters
+    ) -> dict[str, float | tuple[(float,) * 16] | str | ImageFrameData]:
         "returns the remote parameters for this frame."
         nFloats = 0
         nImages = 0
@@ -598,7 +621,7 @@ class RenderStream:
         iText = 0
         for i in range(scene.nParameters):
             param: RemoteParameter = scene.parameters[i]
-            key = str(param.key, encoding='utf-8')
+            key = str(param.key, encoding="utf-8")
             if param.type == RemoteParameterType.NUMBER:
                 values[key] = floats[iFloat]
                 iFloat += 1
@@ -606,15 +629,15 @@ class RenderStream:
                 values[key] = images[iImage]
                 iImage += 1
             elif param.type == RemoteParameterType.POSE:
-                values[key] = tuple(floats[iFloat:iFloat+16])
+                values[key] = tuple(floats[iFloat : iFloat + 16])
                 iFloat += 16
             elif type == RemoteParameterType.TRANSFORM:
-                values[key] = tuple(floats[iFloat:iFloat+16])
+                values[key] = tuple(floats[iFloat : iFloat + 16])
                 iFloat += 16
             elif type == RemoteParameterType.TEXT:
                 stringMem = ctypes.c_char_p()
                 self.dll.rs_getFrameText(scene.hash, iText, ctypes.pointer(stringMem))
-                values[key] = str(stringMem, encoding='utf-8')
+                values[key] = str(stringMem, encoding="utf-8")
                 iText += 1
             else:
                 raise Exception(f"Unknown remote parameter type {type}")
@@ -626,25 +649,30 @@ class RenderStream:
         self.dll.rs_getFrameImage(imageId, frameType, frameData)
 
     def getFrameCamera(self, stream: StreamHandle) -> CameraData:
-        "returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no " \
-        "camera data is available for this stream on this frame"
+        """returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no " "camera data is available for this
+        stream on this frame"""
         cam = CameraData()
         self.dll.rs_getFrameCamera(stream, ctypes.pointer(cam))
         return cam
 
-    def sendFrame(self, stream: StreamHandle, frameType: SenderFrameType, frameData: SenderFrameTypeData,
-                  cameraResponse: CameraResponseData):
+    def sendFrame(
+        self,
+        stream: StreamHandle,
+        frameType: SenderFrameType,
+        frameData: SenderFrameTypeData,
+        cameraResponse: CameraResponseData,
+    ):
         "publish a frame buffer which was generated from the associated tracking and timing information."
         self.dll.rs_sendFrame(stream, frameType, frameData, ctypes.pointer(cameraResponse))
 
     def logToD3(self, message):
         """Log text back to the controlling d3 instance, this will be presented as a single line.
-        
-        Do not terminate with a newline character"""
-        self.dll.rs_logToD3(bytes(message, encoding='utf-8'))
 
-    def sendProfilingData(self, entries:list[ProfilingEntry]):
+        Do not terminate with a newline character"""
+        self.dll.rs_logToD3(bytes(message, encoding="utf-8"))
+
+    def sendProfilingData(self, entries: list[ProfilingEntry]):
         self.dll.rs_sendProfilingData((ProfilingEntry * len(entries))(*entries))
 
     def setNewStatusMessage(self, message):
-        self.dll.rs_setNewStatusMessage(bytes(message, encoding='utf-8'))
+        self.dll.rs_setNewStatusMessage(bytes(message, encoding="utf-8"))
