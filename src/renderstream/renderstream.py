@@ -42,7 +42,7 @@ class VkSemaphore_T(ctypes.Structure):
 VkSemaphore = ctypes.POINTER(VkSemaphore_T)
 
 VERSION_MAJOR = 1
-VERSION_MINOR = 30
+VERSION_MINOR = 31
 
 
 class RS_ERROR(Enumeration):
