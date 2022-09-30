@@ -188,13 +188,14 @@ def main():
                 frameBuffer = np.tile(lineBytes, stream.height)
                 outputParams = {}
 
-            pixelsData = RS.SenderFrameTypeData()
-            pixelsData.cpu.data = frameBuffer.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
-            pixelsData.cpu.stride = stream.width * 4
+            hostPixels = RS.HostMemoryData()
+            hostPixels.data = frameBuffer.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
+            hostPixels.stride = stream.width * 4
+            hostPixels.format = RS.RSPixelFormat.BGRA8
 
             response = RS.FrameResponseData(streamCam, scene, outputParams)
 
-            rs.sendFrame(stream.handle, RS.SenderFrameType.HOST_MEMORY, pixelsData, response)
+            rs.sendFrame(stream.handle, RS.SenderFrame(hostPixels), response)
 
 
 if __name__ == "__main__":
