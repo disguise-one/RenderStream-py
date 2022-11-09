@@ -18,6 +18,9 @@ pID3D12Device = ctypes.c_void_p
 pID3D12CommandQueue = ctypes.c_void_p
 pID3D12Resource = ctypes.c_void_p
 
+_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_kernel32.FreeLibrary.argtypes = [ctypes.wintypes.HMODULE]
+
 
 class VkDevice_T(ctypes.Structure):
     pass
@@ -583,10 +586,7 @@ class RenderStream:
             self.dll.rs_shutdown()
         finally:
             # Bizarre requirement to unload explicitly.
-            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-            kernel32.FreeLibrary.argtypes = [ctypes.wintypes.HMODULE]
-            kernel32.FreeLibrary(self.dll._handle)
-
+            _kernel32.FreeLibrary(self.dll._handle)
             del self.dll
 
     def registerLoggingFunc(self, logger: Callable[[str], None]):
