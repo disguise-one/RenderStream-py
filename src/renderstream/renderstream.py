@@ -4,7 +4,7 @@ import winreg
 import sys
 import os
 import os.path
-from typing import Callable
+from typing import Callable, List, Mapping, Union, Tuple
 from .ctypes_helpers import AnnotatedStructure, AnnotatedUnion, Enumeration
 
 logger_t = ctypes.CFUNCTYPE(None, ctypes.c_char_p)
@@ -144,7 +144,7 @@ class RemoteParameterTypeDefaults(AnnotatedUnion):
     number: NumericalDefaults
     text: TextDefaults
 
-    def __init__(self, value: NumericalDefaults | TextDefaults):
+    def __init__(self, value: Union[NumericalDefaults, TextDefaults]):
         if isinstance(value, NumericalDefaults):
             self.number = value
         else:
@@ -170,11 +170,11 @@ class RemoteParameter(AnnotatedStructure):
         key: str,
         displayName: str,
         group: str,
-        defaults: NumericalDefaults | TextDefaults,
-        options: list[str] = [],
+        defaults: Union[NumericalDefaults, TextDefaults],
+        options: List[str] = [],
         dmxOffset: int = 0,
         dmxType: RemoteParameterDmxType = RemoteParameterDmxType.DEFAULT,
-        flags: RemoteParameterFlags = RemoteParameterFlags.NO_FLAGS,
+        flags: RemoteParameterFlags = RemoteParameterFlags.NO_FLAGS
     ):
         self.group = bytes(group, encoding="utf-8")
         self.displayName = bytes(displayName, encoding="utf-8")
@@ -198,7 +198,7 @@ class RemoteParameters(AnnotatedStructure):
     parameters: ctypes.POINTER(RemoteParameter)
     hash: ctypes.c_uint64
 
-    def __init__(self, name: str, parameters: list[RemoteParameter]):
+    def __init__(self, name: str, parameters: List[RemoteParameter]):
         self.name = bytes(name, encoding="utf-8")
         self.nParameters = len(parameters)
         self.parameters = (RemoteParameter * len(parameters))(*parameters)
@@ -226,8 +226,8 @@ class Schema(AnnotatedStructure):
 
     def __init__(
         self,
-        channels: list[str],
-        scenes: list[RemoteParameters],
+        channels: List[str],
+        scenes: List[RemoteParameters],
         engineName: str = "",
         engineVersion: str = "",
         info: str = "",
@@ -349,7 +349,8 @@ class FrameResponseData(AnnotatedStructure):
     textDataCount: ctypes.c_uint32
     textData: ctypes.POINTER(ctypes.c_char_p)
 
-    def __init__(self, cameraData: CameraResponseData, scene: RemoteParameters, outputParams: dict[str, float | str]):
+    def __init__(self, cameraData: CameraResponseData, scene: RemoteParameters,
+                 outputParams: Mapping[str, Union[float, str]]):
         self.cameraData = ctypes.pointer(cameraData)
         self.schemaHash = scene.hash
 
@@ -699,7 +700,7 @@ class RenderStream:
 
     def getFrameParameters(
         self, scene: RemoteParameters
-    ) -> dict[str, float | tuple[(float,) * 16] | str | ImageFrameData]:
+    ) -> Mapping[str, Union[float, Tuple[(float,) * 16], str, ImageFrameData]]:
         "returns the remote parameters for this frame."
         nFloats = 0
         nImages = 0
