@@ -433,7 +433,7 @@ class SenderFrame(AnnotatedStructure):
     type: SenderFrameType
     data: SenderFrameTypeData
 
-    def __init__(self, data: HostMemoryData | Dx11Data | Dx12Data | OpenGlData | VulkanData):
+    def __init__(self, data: Union[HostMemoryData, Dx11Data, Dx12Data, OpenGlData, VulkanData]):
         if isinstance(data, HostMemoryData):
             self.type = SenderFrameType.HOST_MEMORY
             self.data.cpu = data
