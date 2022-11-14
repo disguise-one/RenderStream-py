@@ -108,7 +108,7 @@ class SenderFrameType(Enumeration):
 
 class FrameDataFlags(Enumeration):
     FRAMEDATA_NO_FLAGS = 0
-    FRAMEDATA_RESET = 1
+    FRAMEDATA_RESET = 1  # if set, then the engine should reset any accumulating values since the layer has been restarted in disguise.
 
 
 class RemoteParameterFlags(Enumeration):
@@ -325,13 +325,13 @@ class CameraData(AnnotatedStructure):
 
 class FrameData(AnnotatedStructure):
     _pack_ = 4
-    tTracked: ctypes.c_double
-    localTime: ctypes.c_double
-    localTimeDelta: ctypes.c_double
+    tTracked: ctypes.c_double   # disguise tracked time - not related to animation
+    localTime: ctypes.c_double  # Engine-local animation time
+    localTimeDelta: ctypes.c_double  # delta time since the last frame affecting the engine-local animation time
     frameRateNumerator: ctypes.c_uint
     frameRateDenominator: ctypes.c_uint
-    flags: FrameDataFlags
-    scene: ctypes.c_uint32
+    flags: FrameDataFlags  # Flags to control frame processing
+    scene: ctypes.c_uint32  # Hash of the selected scene for this frame.
 
 
 class CameraResponseData(AnnotatedStructure):
