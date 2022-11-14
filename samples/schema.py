@@ -164,7 +164,7 @@ def main():
                     paramValues["stable_key_colour_b"],
                     paramValues["stable_key_colour_a"],
                 )
-                strobe = abs(1 - ((frameData.tTracked * speed) % 2))
+                strobe = abs(1 - ((frameData.localTime * speed) % 2))
                 colour = np.array(
                     (b * strobe * 255, g * strobe * 255, r * strobe * 255, a * strobe * 255), dtype=np.uint8
                 )
@@ -174,7 +174,7 @@ def main():
                 lengthPx = int(paramValues["stable_key_length"] * totalCanvasWidthPx)
                 direction = paramValues["stable_key_direction"]
 
-                xStartRadar = int(frameData.tTracked * speed * totalCanvasWidthPx)
+                xStartRadar = int(frameData.localTime * speed * totalCanvasWidthPx)
                 xStartRadar = xStartRadar if direction else -xStartRadar
 
                 lineBrightness = np.zeros(stream.width, dtype=np.uint8)

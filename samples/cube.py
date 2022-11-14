@@ -228,7 +228,7 @@ def render(rs):
         glUseProgram(shaderProgram)
         
         # Set up model matrix
-        model = glm.rotate(rad(frameData.tTracked * paramValues["cube_spin_speed"]), glm.vec3(0, 1, 0))
+        model = glm.rotate(rad(frameData.localTime * paramValues["cube_spin_speed"]), glm.vec3(0, 1, 0))
 
         MVP = proj * view * model
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "MVP"), 1, GL_FALSE, glm.value_ptr(MVP))
