@@ -178,6 +178,10 @@ def render(rs):
                 continue
             else:
                 raise
+
+        # untracked camera
+        if streamCam.camera.cameraHandle == 0:
+            streamCam.camera.z = -5
                 
         scene = schema.scenes.scenes[frameData.scene]
         paramValues = rs.getFrameParameters(scene)
@@ -236,11 +240,9 @@ def render(rs):
 
         response = RS.FrameResponseData(streamCam, scene, {})
 
-        #rs.sendFrame(stream.handle, RS.SenderFrame(glData), response)
-        sendFrameData = RS.SenderFrameTypeData()
-        sendFrameData.gl.texture = streamTextures[iStream]
-
-        rs.sendFrame(stream.handle, RS.SenderFrameType.OPENGL_TEXTURE, sendFrameData, response)
+        glData = RS.OpenGlData()
+        glData.texture = streamTextures[iStream]
+        rs.sendFrame(stream.handle, RS.SenderFrame(glData), response)
 
         glUseProgram(0)
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
