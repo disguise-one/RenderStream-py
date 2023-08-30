@@ -8,4 +8,6 @@ Python bindings for the RenderStream API
 1. Ensure Python is installed (at least 3.7, tested with 3.10)
 1. Create a shortcut from a sample `.py` to a folder in RenderStream projects
 1. Ensure python is associated with `.py` files in Windows explorer.
+1. Add a `permitted_custom_extensions.txt` to the root of the renderstream projects folder
+1. Edit that file and add a line containing `.py` and save the file.
 1. See the workload is detected by d3service, and launch the asset from within d3.
