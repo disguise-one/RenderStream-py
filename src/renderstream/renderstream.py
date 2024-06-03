@@ -748,7 +748,7 @@ class RenderStream:
         floats = (ctypes.c_float * nFloats)()
         self.dll.rs_getFrameParameters(scene.hash, floats, ctypes.sizeof(floats))
         images = (ImageFrameData * nImages)()
-        self.dll.rs_getFrameImageData(scene.hash, images, ctypes.sizeof(images))
+        self.dll.rs_getFrameImageData(scene.hash, images, nImages)
 
         values = {}
         iFloat = 0
