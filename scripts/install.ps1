@@ -7,8 +7,6 @@ $pyinstaller_local = "$env:TEMP\$pyinstaller_zip"
 if (-Not (Test-Path $pyinstaller_local)) {
     Write-Output "Downloading Python..."
     Invoke-WebRequest $pyinstaller_url -OutFile $pyinstaller_local
-} else {
-    Write-Output "Python installer already exists in the temp folder."
 }
 
 # Retrieve the path from the registry
@@ -59,8 +57,11 @@ $sitecustomizeContent | Set-Content -Path "$installFolder\sitecustomize.py" -Enc
 $pythonExe = "$installFolder\python.exe"
 
 # Install pip
-Invoke-WebRequest https://bootstrap.pypa.io/get-pip.py -OutFile $env:TEMP\get-pip.py
-& $pythonExe $env:TEMP\get-pip.py --no-warn-script-location
+$get_pip = "$env:TEMP\get-pip.py"
+if (-Not (Test-Path $get_pip)) {
+    Invoke-WebRequest https://bootstrap.pypa.io/get-pip.py -OutFile $get_pip
+}
+& $pythonExe $get_pip --no-warn-script-location
 
 # Install common packages
 & $pythonExe -m pip install PyOpenGL PyGLM numpy hatchling --no-warn-script-location
@@ -93,27 +94,30 @@ Write-Output "Installing RenderStream package using pip..."
 
 # Install FreeGlut
 $freeglut_zip = "$env:TEMP\freeglut.zip"
-Invoke-WebRequest "https://www.transmissionzero.co.uk/files/software/development/GLUT/freeglut-MSVC.zip" -OutFile $freeglut_zip
 
 # Define paths for the extracted FreeGlut files and the target destination
-$freeglut_extract_path = "$env:TEMP\freeglut"
-$freeglut_dll_source = "freeglut\bin\x64\freeglut.dll"
 $freeglut_dll_target = "$installFolder\Lib\site-packages\OpenGL\DLLs\freeglut64.vc14.dll"
+if (-Not (Test-Path $freeglut_dll_target)) {
+    $freeglut_extract_path = "$env:TEMP\freeglut"
+    $freeglut_dll_source = "freeglut\bin\x64\freeglut.dll"
 
-# Extract the full FreeGlut ZIP file
-Write-Output "Fixing OpenGL..."
-Expand-Archive -Path $freeglut_zip -DestinationPath $freeglut_extract_path -Force
+    Invoke-WebRequest "https://www.transmissionzero.co.uk/files/software/development/GLUT/freeglut-MSVC.zip" -OutFile $freeglut_zip
 
-# Copy the specific DLL file to the target location
-$source_dll_path = Join-Path $freeglut_extract_path $freeglut_dll_source
-if (Test-Path $source_dll_path) {
-    $target_dll_folder = Split-Path $freeglut_dll_target -Parent
-    if (-Not (Test-Path $target_dll_folder)) {
-        New-Item -Path $target_dll_folder -ItemType Directory -Force | Out-Null
+    # Extract the full FreeGlut ZIP file
+    Write-Output "Fixing OpenGL..."
+    Expand-Archive -Path $freeglut_zip -DestinationPath $freeglut_extract_path -Force
+
+    # Copy the specific DLL file to the target location
+    $source_dll_path = Join-Path $freeglut_extract_path $freeglut_dll_source
+    if (Test-Path $source_dll_path) {
+        $target_dll_folder = Split-Path $freeglut_dll_target -Parent
+        if (-Not (Test-Path $target_dll_folder)) {
+            New-Item -Path $target_dll_folder -ItemType Directory -Force | Out-Null
+        }
+        Copy-Item -Path $source_dll_path -Destination $freeglut_dll_target -Force
+    } else {
+        Write-Output "Error: $source_dll_path not found."
     }
-    Copy-Item -Path $source_dll_path -Destination $freeglut_dll_target -Force
-} else {
-    Write-Output "Error: $source_dll_path not found."
 }
 
 # Define the file extension and associated application
@@ -137,9 +141,7 @@ Write-Output "Associated .pyrs files with engine"
 Write-Output "RenderStream engine installation completed."
 
 # Check if requirements.txt exists and install dependencies
-$scriptPath = $MyInvocation.MyCommand.Path
-$scriptDirectory = Split-Path -Parent $scriptPath
-$requirementsFile = Join-Path $scriptDirectory "requirements.txt"
+$requirementsFile = "requirements.txt"
 if (Test-Path $requirementsFile) {
     Write-Output "Found requirements.txt, installing dependencies..."
     & $pythonExe -m pip --disable-pip-version-check install -r $requirementsFile --no-warn-script-location
