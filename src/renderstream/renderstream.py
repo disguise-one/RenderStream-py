@@ -170,7 +170,7 @@ class RemoteParameter(AnnotatedStructure):
         key: str,
         displayName: str,
         group: str,
-        defaults: Union[NumericalDefaults, TextDefaults],
+        default_or_type: Union[NumericalDefaults, TextDefaults, RemoteParameterType],
         options: List[str] = [],
         dmxOffset: int = 0,
         dmxType: RemoteParameterDmxType = RemoteParameterDmxType.DEFAULT,
@@ -179,8 +179,15 @@ class RemoteParameter(AnnotatedStructure):
         self.group = bytes(group, encoding="utf-8")
         self.displayName = bytes(displayName, encoding="utf-8")
         self.key = bytes(key, encoding="utf-8")
-        self.type = RemoteParameterType.NUMBER if isinstance(defaults, NumericalDefaults) else RemoteParameterType.TEXT
-        self.defaults = RemoteParameterTypeDefaults(defaults)
+        
+        if isinstance(default_or_type, NumericalDefaults):
+            self.type = RemoteParameterType.NUMBER
+            self.defaults = RemoteParameterTypeDefaults(default_or_type)
+        elif isinstance(default_or_type, TextDefaults):
+            self.type = RemoteParameterType.TEXT
+            self.defaults = RemoteParameterTypeDefaults(default_or_type)
+        elif isinstance(default_or_type, RemoteParameterType):
+            self.type = default_or_type
 
         self.nOptions = len(options)
         self.options = (ctypes.c_char_p * len(options))(*(bytes(option, encoding="utf-8") for option in options))
@@ -743,7 +750,7 @@ class RenderStream:
             elif type == RemoteParameterType.TEXT:
                 nTexts += 1
             else:
-                raise Exception(f"Unknown remote parameter type {type}")
+                raise ValueError(f"Unknown remote parameter type {type}")
 
         floats = (ctypes.c_float * nFloats)()
         self.dll.rs_getFrameParameters(scene.hash, floats, ctypes.sizeof(floats))
@@ -770,16 +777,16 @@ class RenderStream:
             elif param.type == RemoteParameterType.POSE:
                 values[key] = tuple(floats[iFloat : iFloat + 16])
                 iFloat += 16
-            elif type == RemoteParameterType.TRANSFORM:
+            elif param.type == RemoteParameterType.TRANSFORM:
                 values[key] = tuple(floats[iFloat : iFloat + 16])
                 iFloat += 16
-            elif type == RemoteParameterType.TEXT:
+            elif param.type == RemoteParameterType.TEXT:
                 stringMem = ctypes.c_char_p()
                 self.dll.rs_getFrameText(scene.hash, iText, ctypes.pointer(stringMem))
-                values[key] = str(stringMem, encoding="utf-8")
+                values[key] = stringMem.value.decode()
                 iText += 1
             else:
-                raise Exception(f"Unknown remote parameter type {type}")
+                raise Exception(f"Unknown remote parameter type {param.type}")
 
         return values
 
