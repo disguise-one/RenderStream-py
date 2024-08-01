@@ -1,0 +1,115 @@
+import renderstream as RS
+import numpy as np
+import ctypes
+import time
+
+
+def getSchema(rs):
+    try:
+        schema = rs.loadSchema(__file__)
+    except RS.RenderStreamError:
+        print("Unable to load schema - nulling")
+        schema = None
+
+    if not schema or schema.scenes.nScenes == 0:
+        # This represents some 'editor time' generation of the schema (actually here it happens on first run)
+        # We only need one of either the loadSchema or the set&saveSchema functions to be called in a given
+        # run of the application.
+        print("Creating new schema")
+        schema = RS.Schema(
+            [""],
+            [
+                RS.RemoteParameters(
+                    "Delay tester",
+                    [
+                        RS.RemoteParameter(
+                            "frame_processing_delay",
+                            "Frame processing delay (ms)",
+                            "",
+                            RS.NumericalDefaults(0.0, 0.0, 4000.0, 1),
+                        ),
+                    ],
+                ),
+            ],
+            engineName="Frame processing delay",
+            engineVersion="",
+            info="Test the effects of CPU-side delays on processing frames.",
+        )
+        rs.saveSchema(__file__, schema)
+        rs.setSchema(schema)
+    return schema
+
+
+def main():
+    rs = RS.RenderStream()
+
+    rs.initialiseGpGpuWithoutInterop()
+
+    schema = getSchema(rs)
+    streams = None
+
+    print("Starting main loop")
+    while True:
+        try:
+            frameData = rs.awaitFrameData(5000)
+        except RS.RenderStreamError as e:
+            if e.error == RS.RS_ERROR.STREAMS_CHANGED:
+                streams = rs.getStreams()
+                continue
+            elif e.error == RS.RS_ERROR.TIMEOUT:
+                continue
+            elif e.error == RS.RS_ERROR.QUIT:
+                break
+            else:
+                raise
+
+        if frameData.scene >= schema.scenes.nScenes:
+            print("out of bounds")
+            continue
+
+        # 'load' the scene we are requested to, and get the
+        # dynamic params we need to run it
+        scene = schema.scenes.scenes[frameData.scene]
+        paramValues = rs.getFrameParameters(scene)
+        
+        time.sleep(paramValues['frame_processing_delay'] / 1000.0)
+
+        for iStream in range(streams.nStreams):
+            stream: RS.StreamDescription = streams.streams[iStream]
+
+            streamCam = RS.CameraResponseData()
+            streamCam.tTracked = frameData.tTracked
+            try:
+                streamCam.camera = rs.getFrameCamera(stream.handle)
+            except RS.RenderStreamError as e:
+                if e.error == RS.RS_ERROR.NOT_FOUND:
+                    # on startup, this workload may not have been found on the controller yet.
+                    # so the frame request didn't include this stream.
+                    continue
+                else:
+                    raise
+
+            totalCanvasWidthPx = int(stream.width / (stream.clipping.right - stream.clipping.left))
+            #  totalCanvasHeightPx = int(stream.height / (stream.clipping.bottom - stream.clipping.top))
+            streamOffsetXPx = int(stream.clipping.left * totalCanvasWidthPx)
+
+            r, g, b, a = (1, 1, 1, 1)
+            strobe = abs(1 - ((frameData.localTime) % 2))
+            colour = np.array(
+                (b * strobe * 255, g * strobe * 255, r * strobe * 255, a * strobe * 255), dtype=np.uint8
+            )
+            frameBuffer = np.tile(colour, stream.width * stream.height)
+            outputParams = {}
+
+            hostPixels = RS.HostMemoryData()
+            hostPixels.data = frameBuffer.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
+            hostPixels.stride = stream.width * 4
+            hostPixels.format = RS.RSPixelFormat.BGRA8
+
+            response = RS.FrameResponseData(streamCam, scene, outputParams)
+
+            rs.sendFrame(stream.handle, RS.SenderFrame(hostPixels), response)
+
+
+if __name__ == "__main__":
+    main()

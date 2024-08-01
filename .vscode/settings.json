@@ -2,5 +2,8 @@
     "python.analysis.typeCheckingMode": "standard",
     "[python]": {
         "editor.defaultFormatter": "ms-python.autopep8",
+    },
+    "files.associations": {
+        "*.pyrs": "python"
     }
 }

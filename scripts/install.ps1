@@ -40,18 +40,38 @@ Set-Content -Path $pthFile -Value $pthContent
 
 # Enable local imports for .pyrs scripts
 # Define the content you want to write to sitecustomize.py
-$sitecustomizeContent = @'
+@'
 import sys, os
+
+def install_requirements(folder_path):
+    # Construct the path to the requirements.txt file
+    requirements_path = os.path.join(folder_path, 'requirements.txt')
+
+    # Check if the requirements.txt file exists
+    if os.path.exists(requirements_path):
+        print(f"requirements.txt found in {folder_path}. Installing packages...")
+
+        package_path = os.path.join(folder_path, "pyrs_packages")
+
+        import runpy
+        orig_argv = sys.argv
+        sys.argv = ["pip", 'install', '-r', requirements_path, '--prefix', package_path, '--no-compile']
+        try:
+            runpy.run_module("pip", run_name="__main__")
+        except SystemExit:
+            pass
+        sys.argv = orig_argv
+
+        sys.path.append(os.path.join(package_path, "Lib", "site-packages"))
+    else:
+        print(f"No requirements.txt found in {folder_path}.")
 
 if len(sys.argv) > 0 and sys.argv[0].endswith(".pyrs"):
     script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
     sys.path.insert(0, script_dir)
 
-sys.path.insert(0, "") # "current folder" lookup
-'@
-
-# Write the content to the file using ASCII encoding
-$sitecustomizeContent | Set-Content -Path "$installFolder\sitecustomize.py" -Encoding Ascii
+    install_requirements(script_dir)
+'@ | Set-Content -Path "$installFolder\sitecustomize.py" -Encoding Ascii
 
 # Define the path to the installed Python executable
 $pythonExe = "$installFolder\python.exe"
@@ -63,8 +83,8 @@ if (-Not (Test-Path $get_pip)) {
 }
 & $pythonExe $get_pip --no-warn-script-location
 
-# Install common packages
-& $pythonExe -m pip install PyOpenGL PyGLM numpy hatchling --no-warn-script-location
+# Install packaging requirement for renderstream
+& $pythonExe -m pip install hatchling --no-warn-script-location
 
 
 # Define the RenderStream package download details
@@ -92,34 +112,6 @@ $package_folder = Join-Path $rs_package_extract_path $extracted_folder_name
 Write-Output "Installing RenderStream package using pip..."
 & $pythonExe -m pip install $package_folder
 
-# Install FreeGlut
-$freeglut_zip = "$env:TEMP\freeglut.zip"
-
-# Define paths for the extracted FreeGlut files and the target destination
-$freeglut_dll_target = "$installFolder\Lib\site-packages\OpenGL\DLLs\freeglut64.vc14.dll"
-if (-Not (Test-Path $freeglut_dll_target)) {
-    $freeglut_extract_path = "$env:TEMP\freeglut"
-    $freeglut_dll_source = "freeglut\bin\x64\freeglut.dll"
-
-    Invoke-WebRequest "https://www.transmissionzero.co.uk/files/software/development/GLUT/freeglut-MSVC.zip" -OutFile $freeglut_zip
-
-    # Extract the full FreeGlut ZIP file
-    Write-Output "Fixing OpenGL..."
-    Expand-Archive -Path $freeglut_zip -DestinationPath $freeglut_extract_path -Force
-
-    # Copy the specific DLL file to the target location
-    $source_dll_path = Join-Path $freeglut_extract_path $freeglut_dll_source
-    if (Test-Path $source_dll_path) {
-        $target_dll_folder = Split-Path $freeglut_dll_target -Parent
-        if (-Not (Test-Path $target_dll_folder)) {
-            New-Item -Path $target_dll_folder -ItemType Directory -Force | Out-Null
-        }
-        Copy-Item -Path $source_dll_path -Destination $freeglut_dll_target -Force
-    } else {
-        Write-Output "Error: $source_dll_path not found."
-    }
-}
-
 # Define the file extension and associated application
 $extension = ".pyrs"
 $fileType = "Python.RenderStream"
@@ -137,15 +129,19 @@ $command = "`"$pythonExe`" `"%1`""
 New-Item -Path $regKey_FileType -Force | Out-Null
 Set-ItemProperty -Path $regKey_FileType -Name "(Default)" -Value $command
 
+# Define the path to the permitted_custom_extensions.txt file
+$extensionsFilePath = Join-Path $renderStreamProjectsFolder "permitted_custom_extensions.txt"
+
+# Check if the file exists and contains the 'pyrs' line
+if (-Not (Test-Path $extensionsFilePath)) {
+    "pyrs" | Set-Content -Path $extensionsFilePath -Encoding Ascii
+} else {
+    $existingContent = Get-Content -Path $extensionsFilePath
+    if (-Not ($existingContent -contains "pyrs")) {
+        Add-Content -Path $extensionsFilePath -Value "pyrs"
+    }
+}
+
+
 Write-Output "Associated .pyrs files with engine"
 Write-Output "RenderStream engine installation completed."
-
-# Check if requirements.txt exists and install dependencies
-$requirementsFile = "requirements.txt"
-if (Test-Path $requirementsFile) {
-    Write-Output "Found requirements.txt, installing dependencies..."
-    & $pythonExe -m pip --disable-pip-version-check install -r $requirementsFile --no-warn-script-location
-    Write-Output "Dependencies installed from requirements.txt"
-} else {
-    Write-Output "No requirements.txt found. Skipping additional package installation."
-}
