@@ -44,32 +44,6 @@ import os
 import sys
 import subprocess
 
-def install_requirements(folder_path):
-    # Construct the path to the requirements.txt file
-    requirements_path = os.path.join(folder_path, 'requirements.txt')
-
-    # Check if the requirements.txt file exists
-    if os.path.exists(requirements_path):
-        print(f"requirements.txt found in {folder_path}. Installing packages...")
-
-        package_path = os.path.join(folder_path, "pyrs_packages")
-
-        # Build the pip install command
-        pip_command = [
-            sys.executable, "-m", "pip", "install", "-r", requirements_path,
-            "--prefix", package_path, "--no-compile"
-        ]
-
-        try:
-            subprocess.check_call(pip_command)
-        except subprocess.CalledProcessError as e:
-            print(f"An error occurred while installing packages: {e}")
-
-        # Append the installed packages to sys.path
-        sys.path.append(os.path.join(package_path, "Lib", "site-packages"))
-    else:
-        print(f"No requirements.txt found in {folder_path}.")
-
 # When running under a workload, d3 redirects stdout & stderr for the workload to a file.
 # Python detects that and increases buffering to the point you don't see any output.
 # So we need to revert back to line buffering.
@@ -78,18 +52,47 @@ if os.environ.get("rsWorkloadID", None):
     sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
     sys.stderr.reconfigure(line_buffering=True, encoding="utf-8")
 
-if len(sys.argv) > 0 and sys.argv[0].endswith(".pyrs"):
-    # Running from RenderStream, ensure all files are looked up relative to the script, and script packages are installed & available
+
+# If a pyrs script is given, run in that folder. Important when running as a RS workload.
+if len(sys.argv) > 0 and sys.argv[0].endswith('.pyrs'):
     script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
     os.chdir(script_dir)
 
-    install_requirements(script_dir)
-else:
-    # Running from commandline, ensure current-directory script lookup works and script packages are available
-    from glob import glob
-    if glob("*.pyrs"):
-        sys.path.append(os.path.abspath(os.path.join("pyrs_packages", "Lib", "site-packages")))
 
+# If we are working on or near a .pyrs asset, ensure requirements are met
+# and add the dependencies site package.
+from glob import glob
+if glob("*.pyrs"):
+    # Construct the path to the requirements.txt file
+    requirements_path = os.path.abspath('requirements.txt')
+    package_path = os.path.abspath("pyrs_packages")
+
+    if sys.argv[:2] != ['-m', 'install']:
+        # Check if the requirements.txt file exists 
+        if os.path.exists(requirements_path):
+            print(f"requirements.txt found. Installing packages...")
+
+            # Build the pip install command
+            pip_command = [
+                sys.executable, "-m", "pip", "install", "-r", requirements_path,
+                "--prefix", package_path, "--no-compile"
+            ]
+
+            try:
+                subprocess.check_call(pip_command)
+            except subprocess.CalledProcessError as e:
+                print(f"An error occurred while installing packages: {e}")
+        else:
+            print(f"No requirements.txt found in {os.getcwd()}.")
+
+    # Append the installed packages to sys.path, whether or not requirements is present.
+    if os.path.exists(package_path):
+        import site
+        sys.prefix = package_path
+        site.addsitedir(os.path.join(package_path, "Lib", "site-packages"))
+
+
+# Ensure we are always able to import from the current directory
 sys.path.insert(0, '')
 '@ | Set-Content -Path "$installFolder\sitecustomize.py" -Encoding Ascii
 
