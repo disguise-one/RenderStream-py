@@ -38,10 +38,11 @@ $pthContent = Get-Content -Path $pthFile
 $pthContent = $pthContent -replace '^#import site', 'import site'
 Set-Content -Path $pthFile -Value $pthContent
 
-# Enable local imports for .pyrs scripts
-# Define the content you want to write to sitecustomize.py
+# Customization for enabling RS workload behaviour and per-asset packages
 @'
-import sys, os
+import os
+import sys
+import subprocess
 
 def install_requirements(folder_path):
     # Construct the path to the requirements.txt file
@@ -53,24 +54,44 @@ def install_requirements(folder_path):
 
         package_path = os.path.join(folder_path, "pyrs_packages")
 
-        import runpy
-        orig_argv = sys.argv
-        sys.argv = ["pip", 'install', '-r', requirements_path, '--prefix', package_path, '--no-compile']
-        try:
-            runpy.run_module("pip", run_name="__main__")
-        except SystemExit:
-            pass
-        sys.argv = orig_argv
+        # Build the pip install command
+        pip_command = [
+            sys.executable, "-m", "pip", "install", "-r", requirements_path,
+            "--prefix", package_path, "--no-compile"
+        ]
 
+        try:
+            subprocess.check_call(pip_command)
+        except subprocess.CalledProcessError as e:
+            print(f"An error occurred while installing packages: {e}")
+
+        # Append the installed packages to sys.path
         sys.path.append(os.path.join(package_path, "Lib", "site-packages"))
     else:
         print(f"No requirements.txt found in {folder_path}.")
 
+# When running under a workload, d3 redirects stdout & stderr for the workload to a file.
+# Python detects that and increases buffering to the point you don't see any output.
+# So we need to revert back to line buffering.
+# This is `TextIOWrapper` buffering, not the 'real' stream buffering.
+if os.environ.get("rsWorkloadID", None):
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
+    sys.stderr.reconfigure(line_buffering=True, encoding="utf-8")
+
 if len(sys.argv) > 0 and sys.argv[0].endswith(".pyrs"):
+    # Running from RenderStream, ensure all files are looked up relative to the script, and script packages are installed & available
     script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-    sys.path.insert(0, script_dir)
+    os.chdir(script_dir)
+
+    sys.path.insert(0, '')
 
     install_requirements(script_dir)
+else:
+    # Running from commandline, ensure current-directory script lookup works and script packages are available
+    from glob import glob
+    if glob("*.pyrs"):
+        sys.path.insert(0, '')
+        sys.path.append(os.path.abspath(os.path.join("pyrs_packages", "Lib", "site-packages")))
 '@ | Set-Content -Path "$installFolder\sitecustomize.py" -Encoding Ascii
 
 # Define the path to the installed Python executable
