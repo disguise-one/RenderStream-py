@@ -83,15 +83,14 @@ if len(sys.argv) > 0 and sys.argv[0].endswith(".pyrs"):
     script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
     os.chdir(script_dir)
 
-    sys.path.insert(0, '')
-
     install_requirements(script_dir)
 else:
     # Running from commandline, ensure current-directory script lookup works and script packages are available
     from glob import glob
     if glob("*.pyrs"):
-        sys.path.insert(0, '')
         sys.path.append(os.path.abspath(os.path.join("pyrs_packages", "Lib", "site-packages")))
+
+sys.path.insert(0, '')
 '@ | Set-Content -Path "$installFolder\sitecustomize.py" -Encoding Ascii
 
 # Define the path to the installed Python executable
