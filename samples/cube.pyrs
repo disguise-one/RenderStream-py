@@ -1,14 +1,12 @@
-import fix_freeglut # Needed to install freeglut dll
 import renderstream as RS
 import glm
-from OpenGL.WGL import wglGetCurrentContext, wglGetCurrentDC
-from OpenGL.GLUT import *
 from OpenGL.GL import *
 from OpenGL.GL import shaders
 import numpy as np
 from ctypes import c_void_p
+from gl_helpers import appLoop, getCameraViewProjMatrices
 
-
+# Shader code remains the same
 VERTEX_SHADER = """#version 330
 
 uniform mat4 MVP;
@@ -37,8 +35,7 @@ void main()
 
 shaderProgram = None
 
-
-def initGL(rs):
+def initGL():
     global shaderProgram
 
     vertexshader = shaders.compileShader(VERTEX_SHADER, GL_VERTEX_SHADER)
@@ -86,161 +83,47 @@ def initGL(rs):
 
 
 schema = None
-streams = None
-streamTextures = []
-streamFrameBuffers = []
 
-
-def allocStreamTextures():
-    global renderTargets, streamTextures, streamFrameBuffers
-
-    streamTextures = []
-    streamFrameBuffers = []
-    
-    for iStream in range(streams.nStreams):
-        stream: RS.StreamDescription = streams.streams[iStream]
-
-        # colour
-        texture = glGenTextures(1)
-        streamTextures.append(texture)
-        glBindTexture(GL_TEXTURE_2D, texture)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, stream.width, stream.height, 0, GL_BGRA, GL_UNSIGNED_BYTE, c_void_p(0))
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
-        glBindTexture( GL_TEXTURE_2D, 0 )
-
-        # depth
-        depth = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, depth)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, stream.width, stream.height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, None)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
-        glBindTexture( GL_TEXTURE_2D, 0 )
-
-        # framebuffer
-        frameBuffer = glGenFramebuffers(1)
-        streamFrameBuffers.append(frameBuffer)
-
-        glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer)
-        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, 0)
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth, 0)  
-        glDrawBuffers([GL_COLOR_ATTACHMENT0])
-
-        if glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE:
-            raise Exception("Failed fame buffer status check")
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        
-    assert(len(streamTextures) == streams.nStreams)
-    assert(len(streamFrameBuffers) == streams.nStreams)
-
-
-def render(rs):
-    global streams
-
+def render(rs: RS.RenderStream, frameData: RS.FrameData, stream: RS.StreamDescription):
+    streamCam = RS.CameraResponseData()
+    streamCam.tTracked = frameData.tTracked
     try:
-        frameData = rs.awaitFrameData(5000)
+        streamCam.camera = rs.getFrameCamera(stream.handle)
     except RS.RenderStreamError as e:
-        if e.error == RS.RS_ERROR.STREAMS_CHANGED:
-            streams = rs.getStreams()
-            allocStreamTextures()
-            return
-        elif e.error == RS.RS_ERROR.TIMEOUT:
+        if e.error == RS.RS_ERROR.NOT_FOUND:
             return
         else:
             raise
 
-    for iStream in range(streams.nStreams):
-        stream: RS.StreamDescription = streams.streams[iStream]
+    if streamCam.camera.cameraHandle == 0:
+        streamCam.camera.z = -5
 
-        streamCam = RS.CameraResponseData()
-        streamCam.tTracked = frameData.tTracked
-        try:
-            streamCam.camera = rs.getFrameCamera(stream.handle)
-        except RS.RenderStreamError as e:
-            if e.error == RS.RS_ERROR.NOT_FOUND:
-                # on startup, this workload may not have been found on the controller yet.
-                # so the frame request didn't include this stream.
-                continue
-            else:
-                raise
+    view, proj = getCameraViewProjMatrices(streamCam.camera, stream.clipping)
 
-        # untracked camera
-        if streamCam.camera.cameraHandle == 0:
-            streamCam.camera.z = -5
-                
-        scene = schema.scenes.scenes[frameData.scene]
-        paramValues = rs.getFrameParameters(scene)
+    scene = schema.scenes.scenes[frameData.scene]
+    paramValues = rs.getFrameParameters(scene)
 
-        # Set up projection matrix
-        nearZ = streamCam.camera.nearZ
-        farZ = streamCam.camera.farZ
+    glEnable(GL_DEPTH_TEST)
+    glClearColor(0, 0, 0, 0)
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        if streamCam.camera.orthoWidth > 0.0:
-            cameraAspect = streamCam.camera.sensorX / streamCam.camera.sensorY
-            imageWidth = streamCam.camera.orthoWidth
-            imageHeight = imageWidth / cameraAspect
-        else:
-            imageWidth = (streamCam.camera.sensorX / streamCam.camera.focalLength) * nearZ
-            imageHeight = (streamCam.camera.sensorY / streamCam.camera.focalLength) * nearZ
+    glViewport(0, 0, stream.width, stream.height)
 
-        l = (-0.5 + stream.clipping.left) * imageWidth
-        r = (-0.5 + stream.clipping.right) * imageWidth
-        t = (-0.5 + 1.0 - stream.clipping.top) * imageHeight
-        b = (-0.5 + 1.0 - stream.clipping.bottom) * imageHeight
+    glUseProgram(shaderProgram)
+    
+    model = glm.rotate(glm.radians(frameData.localTime * paramValues["cube_spin_speed"]), glm.vec3(0, 1, 0))
 
-        if streamCam.camera.orthoWidth > 0.0:
-            proj = glm.ortho(l, r, t, b, nearZ, farZ)
-        else:
-            proj = glm.frustum(l, r, t, b, nearZ, farZ)
+    MVP = proj * view * model
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "MVP"), 1, GL_FALSE, glm.value_ptr(MVP))
 
-        # Set up camera view matrix
-        rad = glm.radians
-        rz = glm.rotate(rad(streamCam.camera.rz), glm.vec3(0, 0, -1))
-        rx = glm.rotate(rad(streamCam.camera.rx), glm.vec3(1, 0, 0))
-        ry = glm.rotate(rad(streamCam.camera.ry), glm.vec3(0, -1, 0))
-        camRotation = ry * rx * rz
-        camTranslation = glm.translate(glm.vec3(streamCam.camera.x, streamCam.camera.y, -streamCam.camera.z))
-        view = glm.transpose(camRotation) * glm.inverse(camTranslation)
+    glDrawElements(GL_TRIANGLES, 6 * 6, GL_UNSIGNED_SHORT, c_void_p(0))
 
-        glBindFramebuffer(GL_FRAMEBUFFER, streamFrameBuffers[iStream])
+    glFinish()
 
-        glEnable(GL_DEPTH_TEST)
-        glClearColor(0, 0, 0, 0)
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glUseProgram(0)
+    glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
-        glViewport(0, 0, stream.width, stream.height)
-
-        glUseProgram(shaderProgram)
-        
-        # Set up model matrix
-        model = glm.rotate(rad(frameData.localTime * paramValues["cube_spin_speed"]), glm.vec3(0, 1, 0))
-
-        MVP = proj * view * model
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "MVP"), 1, GL_FALSE, glm.value_ptr(MVP))
-
-        # Actually draw the cube
-        glDrawElements(GL_TRIANGLES, 6 * 6, GL_UNSIGNED_SHORT, c_void_p(0))
-
-        glFinish()
-
-        response = RS.FrameResponseData(streamCam, scene, {})
-
-        glData = RS.OpenGlData()
-        glData.texture = streamTextures[iStream]
-        rs.sendFrame(stream.handle, RS.SenderFrame(glData), response)
-
-        glUseProgram(0)
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-
+    return RS.FrameResponseData(streamCam, scene, {})
 
 def main():
     rs = RS.RenderStream()
@@ -264,44 +147,7 @@ def main():
     rs.saveSchema(__file__, schema)
     rs.setSchema(schema)
 
-    glutInit([])
-    glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_SINGLE)
-    glutInitWindowSize(640, 480)
-    window = glutCreateWindow(b"offscreen")
-    
-    rs.initialiseGpGpuWithOpenGlContexts(wglGetCurrentContext(), wglGetCurrentDC())
-
-    initGL(rs)
-    def idleCallback(): # needs to be kept alive
-        nonlocal rs
-
-        try:
-            render(rs)
-        except RS.RenderStreamError as e:
-            if e.error != RS.RS_ERROR.QUIT:
-                import traceback as tb
-                tb.print_exc()
-            else:
-                print("Exiting normally")
-
-            del rs # shutdown renderstream before glut since glut does something to the network stack
-            glutDestroyWindow(window)
-            glutMainLoopEvent()
-        except:
-            import traceback as tb
-            tb.print_exc()
-
-            del rs # shutdown renderstream since glut does something to the network stack
-            glutDestroyWindow(window)
-            glutMainLoopEvent()
-
-    def displayCallback():
-        pass # actually we render in idle, but glut is unhappy if this isn't registered
-
-    glutDisplayFunc(displayCallback)
-    glutIdleFunc(idleCallback)
-    glutMainLoop()
-    print("Exited main loop")
+    appLoop(rs, initGL, render)
 
 if __name__ == '__main__':
     main()
